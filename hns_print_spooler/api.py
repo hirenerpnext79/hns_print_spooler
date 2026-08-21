@@ -1,4 +1,4 @@
-import frappe
+﻿import frappe
 from frappe.frappeclient import FrappeClient, AuthError
 
 @frappe.whitelist(allow_guest=True)
@@ -75,6 +75,9 @@ def update_print_job(session_id, job_name, status, printer_name=None):
 
 import os
 import subprocess
+import requests
+import urllib.parse
+from pathlib import Path
 
 @frappe.whitelist(allow_guest=True)
 def print_job_server(session_id, job_name):
@@ -86,29 +89,51 @@ def print_job_server(session_id, job_name):
         
         doc = client.get_doc('HNS Print Spooler', job_name)
         file_url = doc.get('attachment_pdf')
-        printer_name = doc.get('printer_name').replace(' ', '_') if doc.get('printer_name') else None
+        printer_name = doc.get('printer_name')
         
         if not file_url or not printer_name:
             return {'status': 'error', 'message': 'Missing attachment or printer_name'}
             
-        # Get absolute file path from file URL
-        file_path = frappe.get_site_path('public', file_url.lstrip('/'))
+        temp_dir = Path("temp_print_jobs")
+        temp_dir.mkdir(exist_ok=True)
         
-        if not os.path.exists(file_path):
-            return {'status': 'error', 'message': f'File not found on server: {file_path}'}
+        full_url = urllib.parse.urljoin(url, file_url)
+        cookies = {'sid': session_id} if session_id else {}
+        
+        local_filename = temp_dir / file_url.split('/')[-1]
+        
+        resp = requests.get(full_url, cookies=cookies)
+        if resp.status_code == 200:
+            with open(local_filename, 'wb') as f:
+                f.write(resp.content)
+        else:
+            return {'status': 'error', 'message': f'Failed to download file: {resp.status_code}'}
             
+        abs_path = os.path.abspath(local_filename)
+        
         # Execute CUPS print command
-        # lp -d "Printer_Name" "/path/to/file.pdf"
-        command = ['lp', '-d', printer_name, file_path]
+        command = ['lp', '-d', printer_name, abs_path]
         result = subprocess.run(command, capture_output=True, text=True)
         
         if result.returncode == 0:
             doc['status'] = 'Printed'
             client.update(doc)
+            
+            try:
+                os.remove(abs_path)
+            except:
+                pass
+                
             return {'status': 'success', 'message': f'Printed successfully to {printer_name}'}
         else:
+            try:
+                os.remove(abs_path)
+            except:
+                pass
             return {'status': 'error', 'message': f'Print failed: {result.stderr}'}
             
     except Exception as e:
         frappe.log_error(title="Server Print Error", message=str(e))
         return {'status': 'error', 'message': str(e)}
+
+
