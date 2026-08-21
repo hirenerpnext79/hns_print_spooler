@@ -1,18 +1,21 @@
 {
  "actions": [],
  "allow_rename": 1,
+ "autoname": "naming_series:",
  "creation": "2026-08-20 13:50:39.350096",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "naming_series",
   "site_name",
   "printer_name",
-  "status",
   "attachment_pdf",
+  "status",
   "column_break_gyxu",
   "user",
   "created_at",
-  "processed_at"
+  "processed_at",
+  "error"
  ],
  "fields": [
   {
@@ -31,12 +34,14 @@
   {
    "fieldname": "printer_name",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "Printer Name",
    "reqd": 1
   },
   {
    "fieldname": "user",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "label": "User",
    "options": "User",
    "read_only": 1
@@ -45,35 +50,53 @@
    "default": "Pending",
    "fieldname": "status",
    "fieldtype": "Select",
+   "in_list_view": 1,
    "label": "Status",
-   "options": "Pending\nProcessing\nCompleted\nFailed",
-   "read_only": 1
+   "no_copy": 1,
+   "options": "Pending\nProcessing\nPrinted\nFailed"
   },
   {
    "default": "Now",
    "fieldname": "created_at",
    "fieldtype": "Datetime",
+   "in_list_view": 1,
    "label": "Created At",
    "read_only": 1
   },
   {
    "fieldname": "processed_at",
    "fieldtype": "Datetime",
+   "in_list_view": 1,
    "label": "Processed At",
    "read_only": 1
   },
   {
    "fieldname": "column_break_gyxu",
    "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "no_copy": 1,
+   "options": "PS-.YYYY.-.####",
+   "reqd": 1
+  },
+  {
+   "fieldname": "error",
+   "fieldtype": "Text",
+   "label": "Error",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-08-20 14:00:50.842540",
+ "modified": "2026-08-21 10:00:25.036993",
  "modified_by": "Administrator",
  "module": "Hns Print Spooler",
  "name": "HNS Print Spooler",
+ "naming_rule": "By \"Naming Series\" field",
  "owner": "Administrator",
  "permissions": [
   {
