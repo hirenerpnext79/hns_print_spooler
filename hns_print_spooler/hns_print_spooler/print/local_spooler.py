@@ -15,7 +15,6 @@ ERP_PASS = "admin"
 
 POLL_INTERVAL_SECONDS = 10
 TEMP_DIR = Path("temp_print_jobs")
-PDFTOPRINTER_EXE = "PDFtoPrinter.exe"
 
 # ==========================================
 
@@ -33,20 +32,6 @@ def get_session():
     
     print(f"[-] Login failed: {resp.text}")
     return None
-
-def download_pdftoprinter():
-    """Downloads PDFtoPrinter.exe if it doesn't exist locally."""
-    if not os.path.exists(PDFTOPRINTER_EXE):
-        print("[*] Downloading PDFtoPrinter.exe utility...")
-        url = "https://www.columbia.edu/~em36/PDFtoPrinter.exe"
-        try:
-            r = requests.get(url, allow_redirects=True)
-            with open(PDFTOPRINTER_EXE, 'wb') as f:
-                f.write(r.content)
-            print("[+] Download complete.")
-        except Exception as e:
-            print(f"[-] Failed to download PDFtoPrinter: {e}")
-            sys.exit(1)
 
 def poll_jobs(sid):
     """Polls the server for new print jobs."""
@@ -74,26 +59,18 @@ def download_pdf(pdf_url, sid):
     return None
 
 def print_pdf(local_path, printer_name):
-    """Executes the Windows print command."""
-    print(f"[*] Sending {local_path} to printer '{printer_name}' using Windows drivers...")
+    """Executes the Linux CUPS print command."""
+    print(f"[*] Sending {local_path} to CUPS printer '{printer_name}'...")
     try:
-        # Get absolute path for Windows
         abs_path = os.path.abspath(local_path)
         
-        # If running inside WSL, convert the path to a Windows-compatible format
-        if '/' in abs_path:
-            # simple trick to let Windows read the WSL path (Windows 10+ supports \\wsl$ or \\wsl.localhost)
-            # Or since the file is downloaded to current directory, just use the relative filename
-            win_path = str(local_filename).replace('/', '\\')
-        else:
-            win_path = abs_path
-        
-        cmd = [PDFTOPRINTER_EXE, win_path, printer_name]
+        # Native Linux lp command
+        cmd = ["lp", "-d", printer_name, abs_path]
         
         result = subprocess.run(cmd, capture_output=True, text=True)
         
         if result.returncode == 0:
-            print("[+] Print job spooled to Windows successfully.")
+            print("[+] Print job spooled to CUPS successfully.")
             return True
         else:
             print(f"[-] Print failed: {result.stderr}")
@@ -117,11 +94,10 @@ def update_job_status(sid, job_name, status):
 
 def main():
     print("==================================================")
-    print("   ERPNext Windows Print Spooler Started          ")
+    print("   ERPNext Linux (CUPS) Print Spooler Started     ")
     print("==================================================")
     
     TEMP_DIR.mkdir(exist_ok=True)
-    download_pdftoprinter()
     
     sid = get_session()
     if not sid:
@@ -138,7 +114,6 @@ def main():
                 pdf_url = job.get('attachment_pdf')
                 printer_name = job.get('printer_name')
                 
-                # IMPORTANT: For this to work, printer_name must exactly match the name in your Windows "Printers & Scanners"
                 if not pdf_url or not printer_name:
                     continue
                     
@@ -146,7 +121,7 @@ def main():
                 
                 local_path = download_pdf(pdf_url, sid)
                 if local_path:
-                    # Execute Windows print
+                    # Execute Linux print
                     success = print_pdf(local_path, printer_name)
                     if success:
                         update_job_status(sid, job_name, "Printed")
@@ -160,7 +135,7 @@ def main():
                         pass
                 
         except Exception as e:
-            print(f"[-] Unexpected error during polling: {e}")
+            pass
             
         time.sleep(POLL_INTERVAL_SECONDS)
 
