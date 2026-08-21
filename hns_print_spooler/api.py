@@ -72,3 +72,43 @@ def update_print_job(session_id, job_name, status, printer_name=None):
     except Exception as e:
         frappe.log_error(title="API Error", message=f"Error in update_print_job: {str(e)}")
         return {'status': 'error', 'message': str(e)}
+
+import os
+import subprocess
+
+@frappe.whitelist(allow_guest=True)
+def print_job_server(session_id, job_name):
+    try:
+        url = frappe.utils.get_url()
+        client = FrappeClient(url)
+        if session_id:
+            client.session.cookies.set('sid', session_id)
+        
+        doc = client.get_doc('HNS Print Spooler', job_name)
+        file_url = doc.get('attachment_pdf')
+        printer_name = doc.get('printer_name')
+        
+        if not file_url or not printer_name:
+            return {'status': 'error', 'message': 'Missing attachment or printer_name'}
+            
+        # Get absolute file path from file URL
+        file_path = frappe.get_site_path('public', file_url.lstrip('/'))
+        
+        if not os.path.exists(file_path):
+            return {'status': 'error', 'message': f'File not found on server: {file_path}'}
+            
+        # Execute CUPS print command
+        # lp -d "Printer_Name" "/path/to/file.pdf"
+        command = ['lp', '-d', printer_name, file_path]
+        result = subprocess.run(command, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            doc['status'] = 'Printed'
+            client.update(doc)
+            return {'status': 'success', 'message': f'Printed successfully to {printer_name}'}
+        else:
+            return {'status': 'error', 'message': f'Print failed: {result.stderr}'}
+            
+    except Exception as e:
+        frappe.log_error(title="Server Print Error", message=str(e))
+        return {'status': 'error', 'message': str(e)}
