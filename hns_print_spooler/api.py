@@ -81,6 +81,8 @@ from pathlib import Path
 
 @frappe.whitelist(allow_guest=True)
 def print_job_server(session_id, job_name):
+    doc = None
+    client = None
     try:
         url = frappe.utils.get_url()
         client = FrappeClient(url)
@@ -88,11 +90,20 @@ def print_job_server(session_id, job_name):
             client.session.cookies.set('sid', session_id)
         
         doc = client.get_doc('HNS Print Spooler', job_name)
+        
+        # Set status to Processing initially
+        doc['status'] = 'Processing'
+        client.update(doc)
+        
         file_url = doc.get('attachment_pdf')
         printer_name = doc.get('printer_name')
         
         if not file_url or not printer_name:
-            return {'status': 'error', 'message': 'Missing attachment or printer_name'}
+            error_msg = 'Missing attachment or printer_name'
+            doc['status'] = 'Error'
+            doc['error'] = error_msg
+            client.update(doc)
+            return {'status': 'error', 'message': error_msg}
             
         temp_dir = Path("temp_print_jobs")
         temp_dir.mkdir(exist_ok=True)
@@ -107,7 +118,11 @@ def print_job_server(session_id, job_name):
             with open(local_filename, 'wb') as f:
                 f.write(resp.content)
         else:
-            return {'status': 'error', 'message': f'Failed to download file: {resp.status_code}'}
+            error_msg = f'Failed to download file: {resp.status_code}'
+            doc['status'] = 'Error'
+            doc['error'] = error_msg
+            client.update(doc)
+            return {'status': 'error', 'message': error_msg}
             
         abs_path = os.path.abspath(local_filename)
         
@@ -117,6 +132,7 @@ def print_job_server(session_id, job_name):
         
         if result.returncode == 0:
             doc['status'] = 'Printed'
+            doc['error'] = ''
             client.update(doc)
             
             try:
@@ -126,14 +142,27 @@ def print_job_server(session_id, job_name):
                 
             return {'status': 'success', 'message': f'Printed successfully to {printer_name}'}
         else:
+            error_msg = f'Print failed: {result.stderr}'
+            doc['status'] = 'Error'
+            doc['error'] = error_msg
+            client.update(doc)
+            
             try:
                 os.remove(abs_path)
             except:
                 pass
-            return {'status': 'error', 'message': f'Print failed: {result.stderr}'}
+            return {'status': 'error', 'message': error_msg}
             
     except Exception as e:
         frappe.log_error(title="Server Print Error", message=str(e))
+        if doc and client:
+            try:
+                doc['status'] = 'Error'
+                doc['error'] = str(e)
+                client.update(doc)
+            except:
+                pass
         return {'status': 'error', 'message': str(e)}
+
 
 
