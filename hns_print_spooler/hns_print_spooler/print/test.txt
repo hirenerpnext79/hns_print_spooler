@@ -1,0 +1,8 @@
+
+
+====================
+ PYTHON PRINTER TEST
+====================
+
+Hello Canon MF240!
+

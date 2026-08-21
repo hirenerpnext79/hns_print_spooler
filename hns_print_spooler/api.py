@@ -86,7 +86,7 @@ def print_job_server(session_id, job_name):
         
         doc = client.get_doc('HNS Print Spooler', job_name)
         file_url = doc.get('attachment_pdf')
-        printer_name = doc.get('printer_name')
+        printer_name = doc.get('printer_name').replace(' ', '_') if doc.get('printer_name') else None
         
         if not file_url or not printer_name:
             return {'status': 'error', 'message': 'Missing attachment or printer_name'}
