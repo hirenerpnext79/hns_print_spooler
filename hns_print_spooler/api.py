@@ -100,6 +100,7 @@ def print_job_server(session_id, job_name):
         
         if not file_url or not printer_name:
             error_msg = 'Missing attachment or printer_name'
+            frappe.log_error(title="Server Print Error", message=error_msg)
             doc['status'] = 'Error'
             doc['error'] = error_msg
             client.update(doc)
@@ -119,6 +120,7 @@ def print_job_server(session_id, job_name):
                 f.write(resp.content)
         else:
             error_msg = f'Failed to download file: {resp.status_code}'
+            frappe.log_error(title="Server Print Error", message=error_msg)
             doc['status'] = 'Error'
             doc['error'] = error_msg
             client.update(doc)
@@ -133,6 +135,7 @@ def print_job_server(session_id, job_name):
         if result.returncode == 0:
             doc['status'] = 'Printed'
             doc['error'] = ''
+            doc['processed_at'] = frappe.utils.now()
             client.update(doc)
             
             try:
@@ -143,6 +146,7 @@ def print_job_server(session_id, job_name):
             return {'status': 'success', 'message': f'Printed successfully to {printer_name}'}
         else:
             error_msg = f'Print failed: {result.stderr}'
+            frappe.log_error(title="Server Print Error", message=error_msg)
             doc['status'] = 'Error'
             doc['error'] = error_msg
             client.update(doc)
@@ -163,6 +167,8 @@ def print_job_server(session_id, job_name):
             except:
                 pass
         return {'status': 'error', 'message': str(e)}
+
+
 
 
 
