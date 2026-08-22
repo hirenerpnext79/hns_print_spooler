@@ -1,0 +1,48 @@
+{
+ "charts": [],
+ "content": "[{\"id\":\"AAUdDHf19t\",\"type\":\"card\",\"data\":{\"card_name\":\"HNS Print Spooler\",\"col\":4}}]",
+ "creation": "2026-08-21 10:15:40.230240",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "idx": 0,
+ "indicator_color": "green",
+ "is_hidden": 0,
+ "label": "HNS Print Spooler System",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "HNS Print Spooler",
+   "link_count": 1,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "HNS Print Spooler",
+   "link_count": 0,
+   "link_to": "HNS Print Spooler",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-08-22 13:51:36.650508",
+ "modified_by": "Administrator",
+ "module": "Hns Print Spooler",
+ "name": "HNS Print Spooler System",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 33.0,
+ "shortcuts": [],
+ "title": "HNS Print Spooler System"
+}
