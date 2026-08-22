@@ -169,8 +169,9 @@ def print_job_server(session_id, job_name):
             
     except Exception as e:
         frappe.log_error(title="Server Print Error", message=str(e))
-        if doc and client:
+        if client and job_name:
             try:
+                doc = client.get_doc('HNS Print Spooler', job_name)
                 doc['status'] = 'Error'
                 doc['error'] = str(e)
                 client.update(doc)
@@ -198,6 +199,7 @@ def check_print_status(job_name):
             check_completed = subprocess.run(['lpstat', '-W', 'completed', '-o'], capture_output=True, text=True)
             if job_id in check_completed.stdout:
                 if doc.get('status') != 'Printed':
+                    doc = client.get_doc('HNS Print Spooler', job_name)
                     doc['status'] = 'Printed'
                     doc['processed_at'] = frappe.utils.now()
                     client.update(doc)
