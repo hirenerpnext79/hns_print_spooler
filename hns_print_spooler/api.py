@@ -1,5 +1,17 @@
 import frappe
 from frappe.frappeclient import FrappeClient, AuthError
+import re
+
+def _get_clean_error_message(e):
+    error_msg = str(e)
+    if "TimestampMismatchError" in repr(e) or "has been modified" in error_msg:
+        match = re.search(r'Error: Document has been modified.*?Please refresh to get the latest document\.', error_msg)
+        if match:
+            return match.group(0)
+        return "Document has been modified after you opened it. Please refresh to get the latest document."
+    elif "PermissionError" in repr(e) or "Does not have permission" in error_msg:
+        return "Permission Denied: You do not have access to this document or printer."
+    return error_msg
 
 @frappe.whitelist(allow_guest=True)
 def login(usr, pwd):
@@ -23,7 +35,8 @@ def login(usr, pwd):
             "full_name": user.full_name
         }
     except Exception as e:
-        frappe.log_error(title="API Login Error", message=str(e))
+        error_msg = _get_clean_error_message(e)
+        frappe.log_error(title="API Login Error", message=error_msg)
         return {
             "status": "error",
             "message": "Invalid login credentials."
@@ -50,8 +63,9 @@ def get_print_spooler_jobs(session_id=None, status="All"):
         )
         return {'status': 'success', 'message': jobs}
     except Exception as e:
-        frappe.log_error(title="API Error", message=f"Error in get_print_spooler_jobs: {str(e)}")
-        return {'status': 'error', 'message': str(e)}
+        error_msg = _get_clean_error_message(e)
+        frappe.log_error(title="API Error", message=f"Error in get_print_spooler_jobs: {error_msg}")
+        return {'status': 'error', 'message': error_msg}
 
 @frappe.whitelist(allow_guest=True)
 def update_print_job(session_id, job_name, status, printer_name=None):
@@ -70,8 +84,9 @@ def update_print_job(session_id, job_name, status, printer_name=None):
         res = client.update(doc)
         return {'status': 'success', 'message': res}
     except Exception as e:
-        frappe.log_error(title="API Error", message=f"Error in update_print_job: {str(e)}")
-        return {'status': 'error', 'message': str(e)}
+        error_msg = _get_clean_error_message(e)
+        frappe.log_error(title="API Error", message=f"Error in update_print_job: {error_msg}")
+        return {'status': 'error', 'message': error_msg}
 
 import os
 import subprocess
@@ -168,16 +183,18 @@ def print_job_server(session_id, job_name):
             return {'status': 'error', 'message': error_msg}
             
     except Exception as e:
-        frappe.log_error(title="Server Print Error", message=str(e))
+        error_msg = _get_clean_error_message(e)
+            
+        frappe.log_error(title="Server Print Error", message=error_msg)
         if client and job_name:
             try:
                 doc = client.get_doc('HNS Print Spooler', job_name)
                 doc['status'] = 'Error'
-                doc['error'] = str(e)
+                doc['error'] = error_msg
                 client.update(doc)
             except:
                 pass
-        return {'status': 'error', 'message': str(e)}
+        return {'status': 'error', 'message': error_msg}
 
 @frappe.whitelist(allow_guest=True)
 def check_print_status(job_name):
@@ -196,16 +213,14 @@ def check_print_status(job_name):
         if job_id in result.stdout:
             return {'status': 'success', 'print_status': 'Printing/Queued'}
         else:
-            check_completed = subprocess.run(['lpstat', '-W', 'completed', '-o'], capture_output=True, text=True)
-            if job_id in check_completed.stdout:
-                if doc.get('status') != 'Printed':
-                    doc = client.get_doc('HNS Print Spooler', job_name)
-                    doc['status'] = 'Printed'
-                    doc['processed_at'] = frappe.utils.now()
-                    client.update(doc)
-                return {'status': 'success', 'print_status': 'Completed'}
-            else:
-                return {'status': 'success', 'print_status': 'Unknown or Cancelled'}
+            # The job is no longer in the active queue, meaning it has finished processing.
+            if doc.get('status') != 'Printed':
+                doc = client.get_doc('HNS Print Spooler', job_name)
+                doc['status'] = 'Printed'
+                doc['processed_at'] = frappe.utils.now()
+                client.update(doc)
+            return {'status': 'success', 'print_status': 'Completed'}
                 
     except Exception as e:
-        return {'status': 'error', 'message': str(e)}
+        error_msg = _get_clean_error_message(e)
+        return {'status': 'error', 'message': error_msg}
