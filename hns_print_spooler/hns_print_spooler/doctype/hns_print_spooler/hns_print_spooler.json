@@ -53,7 +53,7 @@
    "in_list_view": 1,
    "label": "Status",
    "no_copy": 1,
-   "options": "Pending\nProcessing\nPrinted\nError"
+   "options": "Pending\nProcessing\nQueued\nPrinted\nError"
   },
   {
    "default": "Now",
@@ -92,7 +92,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-08-21 15:28:04.681786",
+ "modified": "2026-08-22 14:05:26.440127",
  "modified_by": "Administrator",
  "module": "Hns Print Spooler",
  "name": "HNS Print Spooler",

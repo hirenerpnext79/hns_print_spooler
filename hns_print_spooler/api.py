@@ -1,4 +1,4 @@
-﻿import frappe
+import frappe
 from frappe.frappeclient import FrappeClient, AuthError
 
 @frappe.whitelist(allow_guest=True)
@@ -78,6 +78,7 @@ import subprocess
 import requests
 import urllib.parse
 from pathlib import Path
+import re
 
 @frappe.whitelist(allow_guest=True)
 def print_job_server(session_id, job_name):
@@ -101,6 +102,7 @@ def print_job_server(session_id, job_name):
         if not file_url or not printer_name:
             error_msg = 'Missing attachment or printer_name'
             frappe.log_error(title="Server Print Error", message=error_msg)
+            doc = client.get_doc('HNS Print Spooler', job_name)
             doc['status'] = 'Error'
             doc['error'] = error_msg
             client.update(doc)
@@ -121,6 +123,7 @@ def print_job_server(session_id, job_name):
         else:
             error_msg = f'Failed to download file: {resp.status_code}'
             frappe.log_error(title="Server Print Error", message=error_msg)
+            doc = client.get_doc('HNS Print Spooler', job_name)
             doc['status'] = 'Error'
             doc['error'] = error_msg
             client.update(doc)
@@ -133,9 +136,15 @@ def print_job_server(session_id, job_name):
         result = subprocess.run(command, capture_output=True, text=True)
         
         if result.returncode == 0:
-            doc['status'] = 'Printed'
+            job_id = ""
+            match = re.search(r'request id is (\S+)', result.stdout)
+            if match:
+                job_id = match.group(1)
+                
+            doc = client.get_doc('HNS Print Spooler', job_name)
+            doc['status'] = 'Queued'
+            doc['cups_job_id'] = job_id
             doc['error'] = ''
-            doc['processed_at'] = frappe.utils.now()
             client.update(doc)
             
             try:
@@ -143,10 +152,11 @@ def print_job_server(session_id, job_name):
             except:
                 pass
                 
-            return {'status': 'success', 'message': f'Printed successfully to {printer_name}'}
+            return {'status': 'success', 'message': f'Job queued successfully with ID {job_id}'}
         else:
             error_msg = f'Print failed: {result.stderr}'
             frappe.log_error(title="Server Print Error", message=error_msg)
+            doc = client.get_doc('HNS Print Spooler', job_name)
             doc['status'] = 'Error'
             doc['error'] = error_msg
             client.update(doc)
@@ -168,7 +178,32 @@ def print_job_server(session_id, job_name):
                 pass
         return {'status': 'error', 'message': str(e)}
 
-
-
-
-
+@frappe.whitelist(allow_guest=True)
+def check_print_status(job_name):
+    try:
+        url = frappe.utils.get_url()
+        client = FrappeClient(url)
+        doc = client.get_doc('HNS Print Spooler', job_name)
+        
+        job_id = doc.get("cups_job_id")
+        if not job_id:
+            return {'status': 'error', 'message': 'No CUPS Job ID found for this document.'}
+            
+        command = ['lpstat', '-o']
+        result = subprocess.run(command, capture_output=True, text=True)
+        
+        if job_id in result.stdout:
+            return {'status': 'success', 'print_status': 'Printing/Queued'}
+        else:
+            check_completed = subprocess.run(['lpstat', '-W', 'completed', '-o'], capture_output=True, text=True)
+            if job_id in check_completed.stdout:
+                if doc.get('status') != 'Printed':
+                    doc['status'] = 'Printed'
+                    doc['processed_at'] = frappe.utils.now()
+                    client.update(doc)
+                return {'status': 'success', 'print_status': 'Completed'}
+            else:
+                return {'status': 'success', 'print_status': 'Unknown or Cancelled'}
+                
+    except Exception as e:
+        return {'status': 'error', 'message': str(e)}
