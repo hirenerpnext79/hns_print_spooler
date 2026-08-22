@@ -168,6 +168,63 @@ frappe.query_reports["HNS Attendance - Dynarep - HIREN"] = {
                 String(data.formatter).trim()
             );
         }
+        
+         /*
+         * YOUR TIME CONDITIONS
+         */
+
+        function timeToSec(time) {
+            if (!time) {
+                return null;
+            }
+
+            let parts = String(time).split(":");
+
+            return (
+                (parseInt(parts[0] || 0) * 3600) +
+                (parseInt(parts[1] || 0) * 60) +
+                parseInt(parts[2] || 0)
+            );
+        }
+
+        let first_in = timeToSec(data["3from_time"]);
+        let last_out = timeToSec(data["4last_time"]);
+        let shift_start = timeToSec(data["start_time"]);
+        let shift_end = timeToSec(data["end_time"]);
+
+        /*
+         * Late arrival: first_in > shift_start
+         */
+
+        if (
+            column.fieldname === "3from_time" &&
+            first_in !== null &&
+            shift_start !== null &&
+            first_in > shift_start
+        ) {
+            styles.push("color:red");
+            styles.push("font-weight:bold");
+        }
+
+        /*
+         * Early exit: last_out < shift_end
+         */
+
+        if (
+            column.fieldname === "4last_time" &&
+            last_out !== null &&
+            shift_end !== null &&
+            last_out < shift_end
+        ) {
+            styles.push("color:red");
+            styles.push("font-weight:bold");
+        }
+
+        /*
+         * Apply all styles together.
+         * This preserves the original formatter colors,
+         * except the time warning will correctly show red.
+         */
 
         if (!styles.length) {
             return formatted;
@@ -1485,6 +1542,23 @@ function print_selected_dynamic_rows(report) {
 
                     report.get_data_for_print =
                         original_get_data;
+                
+                    setTimeout(function() {
+                
+                        if (report.datatable &&
+                            report.datatable.rowmanager) {
+                
+                            // Clear selected rows
+                            report.datatable.rowmanager.checkedRows = [];
+                
+                            // Refresh table UI
+                            report.datatable.refresh(
+                                report.data,
+                                report.columns
+                            );
+                        }
+                
+                    }, 300);
                 });
         },
 
