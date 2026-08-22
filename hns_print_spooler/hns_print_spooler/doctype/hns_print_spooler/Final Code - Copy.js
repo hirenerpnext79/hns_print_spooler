@@ -614,6 +614,25 @@ function get_dynamic_header_level(index) {
     }
 
     if (
+        row.indent != null &&
+        row.indent !== ""
+    ) {
+
+        const level =
+            Number(row.indent);
+
+        if (
+            Number.isInteger(level) &&
+            level >= 0
+        ) {
+            _cache.header_level_by_index[index] =
+                level;
+
+            return level;
+        }
+    }
+
+    if (
         row._group_level != null &&
         row._group_level !== ""
     ) {
@@ -721,8 +740,8 @@ function get_dynamic_header_level(index) {
             }
         }
     }
-
-    return null;
+    _cache.header_level_by_index[index] = 0;
+    return 0;
 }
 
 
