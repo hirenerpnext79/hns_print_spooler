@@ -89,138 +89,205 @@ def update_print_job(session_id, job_name, status, printer_name=None):
         return {'status': 'error', 'message': error_msg}
 
 import os
-import subprocess
-import requests
+import re
+import socket
 import urllib.parse
 from pathlib import Path
-import re
+import fitz
+from PIL import Image, ImageOps
+import requests
+
+
+def _is_ip_printer(printer_name):
+    if not printer_name:
+        return False
+    return bool(re.match(r"^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?::(\d+))?$", str(printer_name).strip()))
+
+
+def _parse_ip_port(printer_name, default_port=9100):
+    match = re.match(r"^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?::(\d+))?$", str(printer_name).strip())
+    if not match:
+        return None, default_port
+    host = match.group(1)
+    port = int(match.group(2)) if match.group(2) else default_port
+    return host, port
+
+
+def _send_socket_data(host, port, data_bytes, timeout=10):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(timeout)
+        s.connect((host, port))
+        s.sendall(data_bytes)
+
+
+def _image_to_zpl(img):
+    if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+        bg = Image.new("RGB", img.size, (255, 255, 255))
+        bg.paste(img, mask=img.convert("RGBA").split()[3])
+        img = bg
+    w, h = img.size
+    mono = ImageOps.invert(img.convert("L")).convert("1")
+    bytes_per_row = (w + 7) // 8
+    total_bytes = bytes_per_row * h
+    hex_data = mono.tobytes().hex().upper()
+    return f"^XA^PW{w}^LL{h}^FO0,0^GFA,{total_bytes},{total_bytes},{bytes_per_row},{hex_data}^FS^XZ"
+
+
+def _pdf_to_zpl(pdf_path):
+    doc = fitz.open(pdf_path)
+    zpl_parts = []
+    for page in doc:
+        pix = page.get_pixmap()
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        zpl_parts.append(_image_to_zpl(img))
+    return "\n".join(zpl_parts)
+
+
+def _convert_file_to_zpl(local_file_path):
+    ext = Path(local_file_path).suffix.lower()
+    if ext in [".zpl", ".prn", ".txt", ".lbl"]:
+        with open(local_file_path, "r", encoding="utf-8", errors="ignore") as f:
+            return f.read()
+
+    if ext == ".pdf":
+        return _pdf_to_zpl(local_file_path)
+
+    if ext in [".png", ".jpg", ".jpeg", ".bmp", ".webp"]:
+        with Image.open(local_file_path) as img:
+            return _image_to_zpl(img)
+
+    with open(local_file_path, "r", encoding="utf-8", errors="ignore") as f:
+        content = f.read()
+    if content.strip().startswith("^XA"):
+        return content
+    return _pdf_to_zpl(local_file_path)
+
+
+def _resolve_file_path(file_path):
+    if not file_path:
+        return None
+    raw = str(file_path).strip()
+    if os.path.exists(raw):
+        return raw
+
+    match = re.search(r"/(private/files/[^?#]+|files/[^?#]+)", raw)
+    if match:
+        rel = match.group(1)
+        path = frappe.get_site_path("public", rel) if not rel.startswith("private/") else frappe.get_site_path(rel)
+        if os.path.exists(path):
+            return path
+        file_doc = frappe.db.get_value("File", {"file_url": raw}, "name")
+        if file_doc:
+            return frappe.get_doc("File", file_doc).get_full_path()
+
+    return raw if os.path.exists(raw) else None
+
+
+@frappe.whitelist()
+def print_to_ip(ip_address, file_path):
+    try:
+        if not ip_address:
+            return {"success": False, "message": "Missing ip_address"}
+
+        resolved_path = _resolve_file_path(file_path)
+        if not resolved_path or not os.path.exists(resolved_path):
+            return {"success": False, "message": f"File not found: {file_path}"}
+
+        host, port = _parse_ip_port(ip_address)
+        zpl_data = _convert_file_to_zpl(resolved_path)
+        _send_socket_data(host, port, zpl_data.encode("utf-8"))
+
+        return {
+            "success": True,
+            "message": f"Printed to IP {host}:{port}",
+            "data": {
+                "ip": host,
+                "port": port,
+                "file": resolved_path
+            }
+        }
+    except Exception as e:
+        error_msg = str(e)
+        frappe.log_error(title="IP Print Error", message=error_msg)
+        return {"success": False, "message": error_msg}
+
 
 @frappe.whitelist(allow_guest=True)
-def print_job_server(session_id, job_name):
-    doc = None
-    client = None
-    try:
-        url = frappe.utils.get_url()
-        client = FrappeClient(url)
-        if session_id:
-            client.session.cookies.set('sid', session_id)
-        
-        doc = client.get_doc('HNS Print Spooler', job_name)
-        
-        # Set status to Processing initially
-        doc['status'] = 'Processing'
-        client.update(doc)
-        
-        file_url = doc.get('attachment_pdf')
-        printer_name = doc.get('printer_name')
-        
-        if not file_url or not printer_name:
-            error_msg = 'Missing attachment or printer_name'
-            frappe.log_error(title="Server Print Error", message=error_msg)
-            doc = client.get_doc('HNS Print Spooler', job_name)
-            doc['status'] = 'Error'
-            doc['error'] = error_msg
-            client.update(doc)
-            return {'status': 'error', 'message': error_msg}
-            
-        temp_dir = Path("temp_print_jobs")
-        temp_dir.mkdir(exist_ok=True)
-        
-        full_url = urllib.parse.urljoin(url, file_url)
-        cookies = {'sid': session_id} if session_id else {}
-        
-        local_filename = temp_dir / file_url.split('/')[-1]
-        
-        resp = requests.get(full_url, cookies=cookies)
-        if resp.status_code == 200:
-            with open(local_filename, 'wb') as f:
-                f.write(resp.content)
-        else:
-            error_msg = f'Failed to download file: {resp.status_code}'
-            frappe.log_error(title="Server Print Error", message=error_msg)
-            doc = client.get_doc('HNS Print Spooler', job_name)
-            doc['status'] = 'Error'
-            doc['error'] = error_msg
-            client.update(doc)
-            return {'status': 'error', 'message': error_msg}
-            
-        abs_path = os.path.abspath(local_filename)
-        
-        # Execute CUPS print command
-        command = ['lp', '-d', printer_name, abs_path]
-        result = subprocess.run(command, capture_output=True, text=True)
-        
-        if result.returncode == 0:
-            job_id = ""
-            match = re.search(r'request id is (\S+)', result.stdout)
-            if match:
-                job_id = match.group(1)
-                
-            doc = client.get_doc('HNS Print Spooler', job_name)
-            doc['status'] = 'Queued'
-            doc['cups_job_id'] = job_id
-            doc['error'] = ''
-            client.update(doc)
-            
-            try:
-                os.remove(abs_path)
-            except:
-                pass
-                
-            return {'status': 'success', 'message': f'Job queued successfully with ID {job_id}'}
-        else:
-            error_msg = f'Print failed: {result.stderr}'
-            frappe.log_error(title="Server Print Error", message=error_msg)
-            doc = client.get_doc('HNS Print Spooler', job_name)
-            doc['status'] = 'Error'
-            doc['error'] = error_msg
-            client.update(doc)
-            
-            try:
-                os.remove(abs_path)
-            except:
-                pass
-            return {'status': 'error', 'message': error_msg}
-            
-    except Exception as e:
-        error_msg = _get_clean_error_message(e)
-            
-        frappe.log_error(title="Server Print Error", message=error_msg)
-        if client and job_name:
-            try:
-                doc = client.get_doc('HNS Print Spooler', job_name)
-                doc['status'] = 'Error'
-                doc['error'] = error_msg
-                client.update(doc)
-            except:
-                pass
-        return {'status': 'error', 'message': error_msg}
+def print_job_server(session_id=None, job_name=None):
+    if not job_name:
+        return {"status": "error", "message": "Missing job_name"}
+    res = print_job_direct(job_name)
+    status = "success" if res.get("success") else "error"
+    return {"status": status, "message": res.get("message")}
 
-@frappe.whitelist(allow_guest=True)
-def check_print_status(job_name):
+
+@frappe.whitelist()
+def print_job_direct(job_name):
     try:
-        url = frappe.utils.get_url()
-        client = FrappeClient(url)
-        doc = client.get_doc('HNS Print Spooler', job_name)
-        
-        job_id = doc.get("cups_job_id")
-        if not job_id:
-            return {'status': 'error', 'message': 'No CUPS Job ID found for this document.'}
-            
-        command = ['lpstat', '-o']
-        result = subprocess.run(command, capture_output=True, text=True)
-        
-        if job_id in result.stdout:
-            return {'status': 'success', 'print_status': 'Printing/Queued'}
+        doc = frappe.get_doc("HNS Print Spooler", job_name)
+        if not doc.printer_name:
+            return {"success": False, "message": "Missing printer_name"}
+
+        if not doc.attachment_pdf:
+            return {"success": False, "message": "No attachment file found to print"}
+
+        file_path = _resolve_file_path(doc.attachment_pdf)
+        if not file_path or not os.path.exists(file_path):
+            return {"success": False, "message": f"Attachment file not found: {doc.attachment_pdf}"}
+
+        res = print_to_ip(doc.printer_name, file_path)
+        if res.get("success"):
+            doc.status = "Printed"
+            doc.processed_at = frappe.utils.now()
+            doc.error = ""
+            doc.save(ignore_permissions=True)
         else:
-            # The job is no longer in the active queue, meaning it has finished processing.
-            if doc.get('status') != 'Printed':
-                doc = client.get_doc('HNS Print Spooler', job_name)
-                doc['status'] = 'Printed'
-                doc['processed_at'] = frappe.utils.now()
-                client.update(doc)
-            return {'status': 'success', 'print_status': 'Completed'}
-                
+            doc.status = "Error"
+            doc.error = res.get("message")
+            doc.save(ignore_permissions=True)
+        return res
     except Exception as e:
-        error_msg = _get_clean_error_message(e)
-        return {'status': 'error', 'message': error_msg}
+        frappe.log_error(title="Print Job Direct Error", message=str(e))
+        return {"success": False, "message": str(e)}
+
+
+
+
+
+@frappe.whitelist()
+def get_pending_jobs():
+    try:
+        jobs = frappe.db.get_all(
+            "HNS Print Spooler",
+            filters={"status": "Pending"},
+            fields=["name", "site_name", "printer_name", "attachment_pdf", "status", "created_at"],
+            order_by="creation asc",
+        )
+        return {"success": True, "message": "Pending jobs fetched", "data": jobs}
+    except Exception as e:
+        frappe.log_error(title="Get Pending Jobs Error", message=str(e))
+        return {"success": False, "message": str(e), "data": []}
+
+
+@frappe.whitelist()
+def update_print_status(job_name, status, error=None, printer_name=None):
+    try:
+        if not frappe.db.exists("HNS Print Spooler", job_name):
+            return {"success": False, "message": "Print job not found"}
+
+        update_data = {
+            "status": status,
+            "error": error or "",
+        }
+        if status == "Printed":
+            update_data["processed_at"] = frappe.utils.now()
+
+        if printer_name:
+            update_data["printer_name"] = printer_name
+
+        frappe.db.set_value("HNS Print Spooler", job_name, update_data)
+        return {"success": True, "message": "Print job updated", "data": update_data}
+    except Exception as e:
+        frappe.log_error(title="Update Print Status Error", message=str(e))
+        return {"success": False, "message": str(e)}
+
