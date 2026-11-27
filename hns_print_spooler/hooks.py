@@ -26,7 +26,7 @@ app_license = "mit"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/hns_print_spooler/css/hns_print_spooler.css"
-# app_include_js = "/assets/hns_print_spooler/js/hns_print_spooler.js"
+# app_include_js = []
 
 # include js, css files in header of web template
 # web_include_css = "/assets/hns_print_spooler/css/hns_print_spooler.css"
@@ -43,8 +43,12 @@ app_license = "mit"
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-# doctype_js = {"doctype" : "public/js/doctype.js"}
-# doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
+doctype_js = {
+	"HNS Print Spooler": "hns_print_spooler/doctype/hns_print_spooler/hns_print_spooler.js",
+}
+doctype_list_js = {
+	"HNS Print Spooler": "hns_print_spooler/doctype/hns_print_spooler/hns_print_spooler_list.js",
+}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 

@@ -2,7 +2,7 @@
  "actions": [],
  "allow_rename": 1,
  "autoname": "naming_series:",
- "creation": "2026-08-20 13:50:39.350096",
+ "creation": "2026-11-27 11:06:51.673133",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
@@ -28,8 +28,7 @@
   {
    "fieldname": "attachment_pdf",
    "fieldtype": "Attach",
-   "label": "Attachment (PDF)",
-   "reqd": 1
+   "label": "Attachment (PDF)"
   },
   {
    "fieldname": "printer_name",
@@ -43,6 +42,7 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "User",
+   "no_copy": 1,
    "options": "User",
    "read_only": 1
   },
@@ -53,7 +53,7 @@
    "in_list_view": 1,
    "label": "Status",
    "no_copy": 1,
-   "options": "Pending\nProcessing\nQueued\nPrinted\nError"
+   "options": "Pending\nQueued\nPrinted\nError"
   },
   {
    "default": "Now",
@@ -61,6 +61,7 @@
    "fieldtype": "Datetime",
    "in_list_view": 1,
    "label": "Created At",
+   "no_copy": 1,
    "read_only": 1
   },
   {
@@ -68,6 +69,7 @@
    "fieldtype": "Datetime",
    "in_list_view": 1,
    "label": "Processed At",
+   "no_copy": 1,
    "read_only": 1
   },
   {
@@ -86,13 +88,14 @@
    "fieldname": "error",
    "fieldtype": "Text",
    "label": "Error",
+   "no_copy": 1,
    "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-08-22 14:05:26.440127",
+ "modified": "2026-11-27 12:21:59.530178",
  "modified_by": "Administrator",
  "module": "Hns Print Spooler",
  "name": "HNS Print Spooler",
