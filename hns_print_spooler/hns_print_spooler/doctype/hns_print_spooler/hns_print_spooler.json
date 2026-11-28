@@ -28,7 +28,8 @@
   {
    "fieldname": "attachment_pdf",
    "fieldtype": "Attach",
-   "label": "Attachment (PDF)"
+   "label": "Attachment (PDF)",
+   "no_copy": 1
   },
   {
    "fieldname": "printer_name",
@@ -95,7 +96,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-27 12:21:59.530178",
+ "modified": "2026-11-27 14:04:27.887284",
  "modified_by": "Administrator",
  "module": "Hns Print Spooler",
  "name": "HNS Print Spooler",
